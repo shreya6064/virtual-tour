@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Virtual Home Tour</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      font-family: system-ui, sans-serif;
+      background: #181818;
+    }
+
+    #pano {
+      position: absolute;
+      inset: 0;
+    }
+
+    .toolbar {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .toolbar h1 {
+      margin: 0;
+      padding: 12px 18px;
+      border-radius: 12px;
+      color: white;
+      background: rgb(0 0 0 / 60%);
+      font-size: 17px;
+      font-weight: 500;
+      pointer-events: none;
+    }
+
+    #backButton {
+      padding: 11px 16px;
+      border: 1px solid rgb(255 255 255 / 40%);
+      border-radius: 10px;
+      background: rgb(0 0 0 / 70%);
+      color: white;
+      font: inherit;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    #backButton:hover {
+      background: #526c53;
+    }
+
+    #backButton:disabled {
+      opacity: 0.5;
+      cursor: wait;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    .instructions {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2;
+      width: max-content;
+      max-width: calc(100% - 32px);
+      padding: 10px 16px;
+      border-radius: 24px;
+      background: rgb(0 0 0 / 60%);
+      color: white;
+      font-size: 13px;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .hotspot-anchor {
+      width: 0;
+      height: 0;
+    }
+
+    .hotspot {
+      position: absolute;
+      top: -22px;
+      left: -22px;
+      display: grid;
+      place-items: center;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      border: 2px solid white;
+      border-radius: 50%;
+      background: rgb(25 25 25 / 85%);
+      color: white;
+      font: inherit;
+      font-size: 23px;
+      cursor: pointer;
+      box-shadow: 0 3px 14px #0006;
+      transition: background 150ms, scale 150ms;
+      touch-action: manipulation;
+    }
+
+    .hotspot:hover {
+      background: #526c53;
+      scale: 1.12;
+    }
+
+    button:focus-visible {
+      outline: 3px solid #a8d4ff;
+      outline-offset: 4px;
+    }
+
+    .hotspot.info {
+      font-family: Georgia, serif;
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    dialog {
+      width: min(420px, calc(100vw - 32px));
+      padding: 28px;
+      border: none;
+      border-radius: 16px;
+      color: #222;
+      line-height: 1.6;
+    }
+
+    dialog::backdrop {
+      background: rgb(0 0 0 / 45%);
+    }
+
+    dialog h2 {
+      margin-top: 0;
+    }
+
+    .close {
+      padding: 9px 18px;
+      border: 0;
+      border-radius: 8px;
+      background: #222;
+      color: white;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    #status {
+      position: absolute;
+      top: 140px;
+      left: 20px;
+      right: 20px;
+      z-index: 3;
+      color: white;
+      pointer-events: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="pano"></div>
+
+  <div class="toolbar">
+    <h1 id="sceneTitle">Virtual Mansion Tour</h1>
+    <button id="backButton" type="button" hidden>
+      ← Back to main view
+    </button>
+  </div>
+
+  <div id="status" role="status">Loading panoramas…</div>
+
+  <div class="instructions">
+    Click & drag to look around · Scroll or pinch to zoom · Click arrows to move | Custom made by Shreya Punjabi
+  </div>
+
+  <dialog id="infoDialog">
+    <h2 id="infoTitle"></h2>
+    <p id="infoText"></p>
+
+    <form method="dialog">
+      <button class="close">Close</button>
+    </form>
+  </dialog>
+
+  <script src="https://cdn.jsdelivr.net/npm/marzipano@0.10.2/dist/marzipano.js"></script>
+
+  <script>
+    // ============================================================
+    // EDIT YOUR TOUR HERE
+    // All angles below are in DEGREES.
+    // ============================================================
+
+    const MAIN_SCENE = "outdoors";
+
+    const tour = {
+      outdoors: {
+        title: "External View",
+        image: "./panorama_highres_glow.jpg",
+
+        initialView: {
+          yaw: 0,
+          pitch: 0,
+          fov: 75
+        },
+
+        navigation: [
+          {
+            target: "pool",
+            yaw: -36.23,
+            pitch: 3.68,
+            label: "Go to pool"
+          }
+        ],
+
+        information: [
+          {
+            yaw: -25.19,
+            pitch: -4.77,
+            title: "Exterior",
+            text: "Located in inland Brazil, this house hovers over the mountains. Stilts lift it above the ground, allowing rainwater to drain and the house to breathe."
+          }
+        ]
+      },
+
+      pool: {
+        title: "Pool",
+        image: "./pool_highres1.jpg",
+
+        initialView: {
+          yaw: 0,
+          pitch: 0,
+          fov: 75
+        },
+
+        navigation: [
+          {
+            target: "outdoors",
+            yaw: 90.39,
+            pitch: -2.53,
+            label: "Back to main view"
+          },
+          {
+            target: "interior",
+            yaw: -4.77,
+            pitch: 1.18,
+            label: "Interior Living Space"
+          }
+
+        ],
+
+        information: [
+          {
+            yaw: 40,
+            pitch: 5,
+            title: "Pool and Deck",
+            text: "The pool benefits from abundant exposure to the sun, and the platform serves as an observation deck."
+          }
+        ]
+      },
+
+      interior: {
+        title: "Living Area",
+        image: "./inner_room10001.jpg",
+
+        initialView: {
+          yaw: 0,
+          pitch: 0,
+          fov: 75
+        },
+
+        navigation: [
+          {
+            target: "pool",
+            yaw: -174.46,
+            pitch: 13.69,
+            label: "Back to pool view"
+          }
+        ],
+
+        information: [
+          {
+            yaw: 40,
+            pitch: 5,
+            title: "Living Area",
+            text: "Warm wood walls, modern furniture, and a billiards table make this area the perfect place to relax, chat, and soak up some sun."
+          }
+        ]
+      }
+    };
+
+    // ============================================================
+    // VIEWER
+    // ============================================================
+
+    const radians = degrees => degrees * Math.PI / 180;
+    const roundedDegrees = radians =>
+      +(radians * 180 / Math.PI).toFixed(2);
+
+    const panoElement = document.getElementById("pano");
+    const statusElement = document.getElementById("status");
+    const titleElement = document.getElementById("sceneTitle");
+    const backButton = document.getElementById("backButton");
+
+    const dialog = document.getElementById("infoDialog");
+    const infoTitle = document.getElementById("infoTitle");
+    const infoText = document.getElementById("infoText");
+
+    const scenes = {};
+
+    let viewer;
+    let currentSceneId;
+    let transitioning = false;
+
+    function loadImage(url) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+
+        image.onload = () => resolve(image);
+
+        image.onerror = () => {
+          reject(new Error(
+            `Could not load ${url}. Check the filename and use a local server.`
+          ));
+        };
+
+        image.src = url;
+      });
+    }
+
+    function switchScene(id, duration = 600) {
+      if (transitioning || id === currentSceneId) return;
+
+      const destination = scenes[id];
+      if (!destination) return;
+
+      if (dialog.open) dialog.close();
+
+      transitioning = true;
+      currentSceneId = id;
+
+      titleElement.textContent = tour[id].title;
+      backButton.hidden = id === MAIN_SCENE;
+      backButton.disabled = true;
+
+      destination.switchTo(
+        { transitionDuration: duration },
+        () => {
+          transitioning = false;
+          backButton.disabled = false;
+        }
+      );
+    }
+
+    // Always return to the main panorama.
+    backButton.addEventListener("click", () => {
+      switchScene(MAIN_SCENE);
+    });
+
+    function createMarker(
+      scene,
+      yaw,
+      pitch,
+      label,
+      symbol,
+      onClick,
+      isInfo = false
+    ) {
+      const anchor = document.createElement("div");
+      anchor.className = "hotspot-anchor";
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = isInfo ? "hotspot info" : "hotspot";
+      button.textContent = symbol;
+      button.title = label;
+      button.setAttribute("aria-label", label);
+
+      for (const eventName of ["pointerdown", "mousedown", "touchstart"]) {
+        button.addEventListener(eventName, event => {
+          event.stopPropagation();
+        });
+      }
+
+      button.addEventListener("click", event => {
+        event.stopPropagation();
+        onClick();
+      });
+
+      button.addEventListener("dblclick", event => {
+        event.stopPropagation();
+      });
+
+      anchor.appendChild(button);
+
+      scene.hotspotContainer().createHotspot(anchor, {
+        yaw: radians(yaw),
+        pitch: radians(pitch)
+      });
+    }
+
+    async function startTour() {
+      try {
+        if (!window.Marzipano) {
+          throw new Error(
+            "Marzipano could not load. Check your internet connection."
+          );
+        }
+
+        viewer = new Marzipano.Viewer(panoElement, {
+          controls: {
+            mouseViewMode: "drag"
+          }
+        });
+
+        const images = await Promise.all(
+          Object.entries(tour).map(async ([id, config]) => {
+            const image = await loadImage(config.image);
+
+            if (image.naturalWidth !== image.naturalHeight * 2) {
+              throw new Error(
+                `${config.image} must be a full 2:1 equirectangular panorama.`
+              );
+            }
+
+            return { id, config, image };
+          })
+        );
+
+        // Create panoramas.
+        for (const { id, config, image } of images) {
+          const initial = config.initialView;
+
+          
+          const limiter = Marzipano.RectilinearView.limit.vfov(
+            radians(30),  // Maximum zoom in.
+            radians(110)  // Maximum zoom out.
+          );
+
+
+          
+
+
+          const view = new Marzipano.RectilinearView(
+            {
+              yaw: radians(initial.yaw),
+              pitch: radians(initial.pitch),
+              fov: radians(initial.fov)
+            },
+            limiter
+          );
+
+          scenes[id] = viewer.createScene({
+            source: Marzipano.ImageUrlSource.fromString(config.image),
+
+            geometry: new Marzipano.EquirectGeometry([
+              { width: image.naturalWidth }
+            ]),
+
+            view,
+            pinFirstLevel: true
+          });
+        }
+
+        // Add navigation and information markers.
+        for (const [id, config] of Object.entries(tour)) {
+          const scene = scenes[id];
+
+          for (const link of config.navigation) {
+            createMarker(
+              scene,
+              link.yaw,
+              link.pitch,
+              link.label,
+              "↑",
+              () => switchScene(link.target)
+            );
+          }
+
+          for (const info of config.information) {
+            createMarker(
+              scene,
+              info.yaw,
+              info.pitch,
+              info.title,
+              "i",
+              () => {
+                infoTitle.textContent = info.title;
+                infoText.textContent = info.text;
+
+                if (!dialog.open) {
+                  dialog.showModal();
+                }
+              },
+              true
+            );
+          }
+        }
+
+        switchScene(MAIN_SCENE, 0);
+        statusElement.textContent = "";
+
+        // Double-click a location to print its hotspot coordinates.
+        panoElement.addEventListener("dblclick", event => {
+          const activeView = viewer.scene().view();
+          const bounds = panoElement.getBoundingClientRect();
+
+          const position = activeView.screenToCoordinates({
+            x: event.clientX - bounds.left,
+            y: event.clientY - bounds.top
+          });
+
+          if (position) {
+            console.log("HOTSPOT POSITION", {
+              scene: currentSceneId,
+              yaw: roundedDegrees(position.yaw),
+              pitch: roundedDegrees(position.pitch)
+            });
+          }
+        });
+
+        // Press P to print the current view angles and zoom.
+        window.addEventListener("keydown", event => {
+          if (
+            event.key.toLowerCase() !== "p" ||
+            event.ctrlKey ||
+            event.metaKey ||
+            event.altKey ||
+            dialog.open
+          ) {
+            return;
+          }
+
+          const activeView = viewer.scene().view();
+
+          console.log("INITIAL VIEW", {
+            scene: currentSceneId,
+            yaw: roundedDegrees(activeView.yaw()),
+            pitch: roundedDegrees(activeView.pitch()),
+            fov: roundedDegrees(activeView.fov())
+          });
+        });
+
+      } catch (error) {
+        statusElement.textContent = error.message;
+        console.error(error);
+      }
+    }
+
+    startTour();
+  </script>
+</body>
+</html>
